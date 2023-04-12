@@ -16,9 +16,9 @@ class PurePursuit(object):
     """
     def __init__(self):
         self.odom_topic       = rospy.get_param("~odom_topic")
-        self.lookahead        = # FILL IN #
-        self.speed            = # FILL IN #
-        self.wheelbase_length = # FILL IN #
+        self.lookahead        = # FILL IN
+        self.speed            = # FILL IN
+        self.wheelbase_length = # FILL IN
         self.trajectory  = utils.LineTrajectory("/followed_trajectory")
         self.traj_sub = rospy.Subscriber("/trajectory/current", PoseArray, self.trajectory_callback, queue_size=1)
         self.drive_pub = rospy.Publisher("/drive", AckermannDriveStamped, queue_size=1)
