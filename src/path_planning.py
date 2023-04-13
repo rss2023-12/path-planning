@@ -48,8 +48,8 @@ class PathPlan(object):
             self.graph = self.build_graph(self.lowres_map)
 
             # TODO (for Varied Resolution) convert start and goal to cell indices in graph of different resolution
-            start = (self.start.position.x, self.start.position.y)
-            goal = (self.goal.position.x, self.goal.position.y)
+            start = self.xy_to_uv(self.start.position.x, self.start.position.y)
+            goal = self.xy_to_uv(self.goal.position.x, self.goal.position.y)
 
             # plan path
             #parent = self.find_shortest_path(self.graph, start, goal)
@@ -91,7 +91,7 @@ class PathPlan(object):
         p = goal
         while p != start:
             # TODO (for Varied Resolution) convert p to a PoseStamped in map
-            self.trajectory.addPoint(p)
+            self.trajectory.addPoint(self.uv_to_xy(p[0], p[1]))
             p = parent[p]
 
         # publish trajectory
