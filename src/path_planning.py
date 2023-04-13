@@ -31,14 +31,9 @@ class PathPlan(object):
 
         # states
         self.to_update_graph = False
-        self.map = None # as an OccupancyGrid
+        self.lowres_map = None # downsampled version of map as an OccupancyGrid
         self.trajectory = LineTrajectory("/planned_trajectory")
-        self.graph = {
-            "data": None,
-            "info": {
-                "resolution": 0.1, # meters per cell
-            }
-        } # as an OccupacyGrid
+        self.graph = None
         self.goal = None # as a PoseStamped in map
         self.start = None # as a PoseStamped in map
         
@@ -50,7 +45,7 @@ class PathPlan(object):
             self.to_update_graph = False
 
             # create graph from map, start, and goal
-            self.graph = self.map # TODO (for Varied Resolution) update resolution, height, width
+            self.graph = self.lowres_map # TODO (for Varied Resolution) update resolution, height, width
 
             # TODO (for Varied Resolution) convert start and goal to cell indices in graph of different resolution
             start = (self.start.position.x, self.start.position.y)
@@ -69,7 +64,7 @@ class PathPlan(object):
         rospy.loginfo(msg)
         rospy.loginfo((msg.info.width, msg.info.height))
         self.to_update_graph = True
-        self.graph = self.build_graph(msg)
+        self.lowres_map = self.make_lowres_map(msg)
         rospy.loginfo(self.graph.shape)
 
 
@@ -162,8 +157,8 @@ class PathPlan(object):
     
 
 
-    def build_graph(self, map):
-        og_graph = np.array(map.data).reshape(map.info.width, map.info.height)
+    def make_lowres_map(self, map):
+        og_map_data = np.array(map.data).reshape(map.info.width, map.info.height)
 
         # params
         filt = np.ones((2, 2))
@@ -171,17 +166,22 @@ class PathPlan(object):
 
         # convolve
         stride_conv = lambda arr, arr2, s: scipy.signal.convolve2d(arr, arr2[::-1, ::-1], mode='valid')[::s, ::s]
-        new_graph = stride_conv(og_graph, filt, stride)
+        new_map_data = stride_conv(og_map_data, filt, stride)
 
-        return new_graph
+        new_map = OccupancyGrid()
+        new_map.data = new_map_data.flatten()
+        new_map.info = map.info
+        new_map.info.width = new_map_data.shape[0]
+        new_map.info.height = new_map_data.shape[1]
+        new_map.info.resolution = map.info.resolution * stride
+
+        return new_map
 
   
 
     def map_thicken(self,OG):
         '''
         Creates a graph out of map data. First adds a thickening, finds all open space, then downsamples into dict graph representation"
-
-
         '''
 
         neighbors = [(0,1), (0,-1), (1,0), (-1,0), (1,1), (-1, -1), (1, -1), (-1, 1)]
