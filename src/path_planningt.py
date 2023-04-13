@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import rospy
+import tf
 import numpy as np
 import scipy.signal
 import math
@@ -28,14 +29,17 @@ class PathPlan(object):
         self.goal_sub = rospy.Subscriber("/move_base_simple/goal", PoseStamped, self.goal_cb, queue_size=10)
         self.traj_pub = rospy.Publisher("/trajectory/current", PoseArray, queue_size=10)
         self.odom_sub = rospy.Subscriber(self.odom_topic, Odometry, self.odom_cb)
-        
 
         # states
         self.to_update_graph = False
-        self.map = None
-        self.lowres_map = None # downsampled version of map as an OccupancyGrid
+        self.map = None # as an OccupancyGrid
         self.trajectory = LineTrajectory("/planned_trajectory")
-        self.graph = None # as a set of vacant cells in lowres_map
+        self.graph = {
+            "data": None,
+            "info": {
+                "resolution": 0.1, # meters per cell
+            }
+        } # as an OccupacyGrid
         self.goal = None # as a PoseStamped in map
         self.start = None # as a PoseStamped in map
         
@@ -47,11 +51,11 @@ class PathPlan(object):
             self.to_update_graph = False
 
             # create graph from map, start, and goal
-            self.graph = self.build_graph(self.lowres_map)
+            self.graph = self.map # TODO (for Varied Resolution) update resolution, height, width
 
             # TODO (for Varied Resolution) convert start and goal to cell indices in graph of different resolution
-            start = self.xy_to_uv(self.start.position.x, self.start.position.y)
-            goal = self.xy_to_uv(self.goal.position.x, self.goal.position.y)
+            start = (self.start.position.x, self.start.position.y)
+            goal = (self.goal.position.x, self.goal.position.y)
 
             # plan path
             #parent = self.find_shortest_path(self.graph, start, goal)
@@ -63,10 +67,22 @@ class PathPlan(object):
         """
         Callback for map. Updates the new map
         """
-        self.to_update_graph = True
+        #rospy.loginfo(msg)        self.to_update_graph = True
         self.map = msg
-        self.lowres_map = self.make_lowres_map(msg)
-        print('new map made', self.lowres_map.info)
+        self.graph = self.build_graph(msg)
+        
+        print('staring map thicken')
+        # self. dim = self.map_thicken(msg)
+        a = self.uv_to_xy(40,10)
+        r = self.xy_to_uv(a[0],a[1])
+        
+        pass
+
+        
+        rospy.loginfo((msg.info.width, msg.info.height))
+        print(self.graph)
+        rospy.loginfo(self.graph.shape)
+
 
     def odom_cb(self, msg):
         """
@@ -82,27 +98,9 @@ class PathPlan(object):
         """
         self.to_update_graph = True
         self.goal = msg.pose
-
-
-
-    def plan_path(self, graph, start, goal, parent):
-        """
-        Creates a LineTrajectory object and publishes it to the /trajectory/current topic.
-        """
-        # form PoseArray from parent values
-        self.trajectory = LineTrajectory("/planned_trajectory")
-        p = goal
-        while p != start:
-            # TODO (for Varied Resolution) convert p to a PoseStamped in map
-            self.trajectory.addPoint(self.uv_to_xy(p[0], p[1]))
-            p = parent[p]
-
-        # publish trajectory
-        self.traj_pub.publish(self.trajectory.toPoseArray())
-
-        # visualize trajectory Markers
-        self.trajectory.publish_viz()
-
+    
+    
+    
     def uv_to_xy(self,u,v):
         '''
         inputs must not be np array
@@ -159,6 +157,26 @@ class PathPlan(object):
         return uv.reshape(1,4)[0][:2]
 
 
+
+    def plan_path(self, graph, start, goal, parent):
+        """
+        Creates a LineTrajectory object and publishes it to the /trajectory/current topic.
+        """
+        # form PoseArray from parent values
+        self.trajectory = LineTrajectory("/planned_trajectory")
+        p = goal
+        while p != start:
+            # TODO (for Varied Resolution) convert p to a PoseStamped in map
+            self.trajectory.addPoint(p)
+            p = parent[p]
+
+        # publish trajectory
+        self.traj_pub.publish(self.trajectory.toPoseArray())
+
+        # visualize trajectory Markers
+        self.trajectory.publish_viz()
+
+
     def find_shortest_path(self, graph, start, goal):
         """
         Finds the shortest path from start to goal in the graph.
@@ -212,45 +230,26 @@ class PathPlan(object):
     
 
 
-    def make_lowres_map(self, map):
-        """
-        Downsamples the map by a factor "stride".
-        """
-        og_map_data = np.array(map.data).reshape(map.info.width, map.info.height)
+    def build_graph(self, map):
+        og_graph = np.array(map.data).reshape(map.info.width, map.info.height)
 
         # params
-        filt = np.ones((7, 7)) # 0.05m x 3 = 15 cm buffer on each side
+        filt = np.ones((2, 2))
         stride = 2
 
         # convolve
         stride_conv = lambda arr, arr2, s: scipy.signal.convolve2d(arr, arr2[::-1, ::-1], mode='valid')[::s, ::s]
-        new_map_data = stride_conv(og_map_data, filt, stride)
+        new_graph = stride_conv(og_graph, filt, stride)
 
-        new_map = OccupancyGrid()
-        new_map.data = new_map_data.flatten()
-        new_map.info = map.info
-        new_map.info.width = new_map_data.shape[0]
-        new_map.info.height = new_map_data.shape[1]
-        new_map.info.resolution = map.info.resolution * stride
+        return new_graph
 
-        return new_map
-    
-
-    def build_graph(self, map):
-        """
-        Builds a graph of vacant cells from the map data.
-        """
-        graph = set()
-        for i in range(map.info.height):
-            for j in range(map.info.width):
-                if map.data[i*map.info.width + j] == 0:
-                    graph.add((i,j))
-        return graph
   
 
     def map_thicken(self,OG):
         '''
         Creates a graph out of map data. First adds a thickening, finds all open space, then downsamples into dict graph representation"
+
+
         '''
 
         neighbors = [(0,1), (0,-1), (1,0), (-1,0), (1,1), (-1, -1), (1, -1), (-1, 1)]
