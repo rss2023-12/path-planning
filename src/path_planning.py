@@ -61,11 +61,8 @@ class PathPlan(object):
         """
         Callback for map. Updates the new map
         """
-        rospy.loginfo(msg)
-        rospy.loginfo((msg.info.width, msg.info.height))
         self.to_update_graph = True
         self.lowres_map = self.make_lowres_map(msg)
-        rospy.loginfo((self.lowres_map.info.width, self.lowres_map.info.height))
 
 
     def odom_cb(self, msg):
