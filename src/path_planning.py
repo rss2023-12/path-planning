@@ -2,11 +2,20 @@
 
 import rospy
 import numpy as np
+import math
 from geometry_msgs.msg import PoseStamped, PoseArray
 from nav_msgs.msg import Odometry, OccupancyGrid
 import rospkg
 import time, os
 from utils import LineTrajectory
+
+#
+# TODO (ideas)
+# Varied Resolution = resolution of graph is different than resolution of map
+# Shortest Path Chain Reduction = reduce the chain of nodes if they are in a straight line
+# Dynamic Subgraph Node Grouping = veried resolution in graph (higher around start, lower otherwise) 
+# (!) Consider Bot Orientation in building the trajectory
+#
 
 class PathPlan(object):
     """ Listens for goal pose published by RViz and uses it to plan a path from
@@ -19,16 +28,18 @@ class PathPlan(object):
         self.traj_pub = rospy.Publisher("/trajectory/current", PoseArray, queue_size=10)
         self.odom_sub = rospy.Subscriber(self.odom_topic, Odometry, self.odom_cb)
 
-        # params
-        self.graph_resolution = 0.1 # meters per cell
-
         # states
         self.to_update_graph = False
-        self.map = None
+        self.map = None # as an OccupancyGrid
         self.trajectory = LineTrajectory("/planned_trajectory")
-        self.graph = None # as a 2d  array
-        self.goal = None # as an index into 2d  array
-        self.start = None # as an index into 2d  array
+        self.graph = {
+            "data": None,
+            "info": {
+                "resolution": 0.1, # meters per cell
+            }
+        } # as an OccupacyGrid
+        self.goal = None # as a PoseStamped in map
+        self.start = None # as a PoseStamped in map
         
         while True:
             self.main()
@@ -38,11 +49,16 @@ class PathPlan(object):
             self.to_update_graph = False
 
             # create graph from map, start, and goal
-            self.graph = self.map # TODO rewrite if you want a graph of a different resolution
+            self.graph = self.map # TODO (for Varied Resolution) update resolution, height, width
+
+            # TODO (for Varied Resolution) convert start and goal to cell indices in graph of different resolution
+            start = (self.start.position.x, self.start.position.y)
+            goal = (self.goal.position.x, self.goal.position.y)
 
             # plan path
-            parent = self.find_shortest_path(self.graph, self.start, self.goal)
-            self.plan_path(self.graph, self.start, self.goal, parent)
+            parent = self.find_shortest_path(self.graph, start, goal)
+            # TODO (for Shortest Path Chain Reduction) collapse parent chain
+            self.plan_path(self.graph, start, goal, parent)
 
 
     def map_cb(self, msg):
@@ -51,7 +67,6 @@ class PathPlan(object):
         """
         self.to_update_graph = True
         self.map = self.map_thicken(msg)
-        # TODO update map
 
 
     def odom_cb(self, msg):
@@ -59,15 +74,15 @@ class PathPlan(object):
         Callback for odometry. Updates the current pose to a cell index in the graph
         """
         self.to_update_graph = True
-        # TODO convert pose to cell index
+        self.start = msg.pose
 
 
-    def goal_cb(self, msg): # msg is a PoseStamped
+    def goal_cb(self, msg):
         """
         Callback for goal pose. Updates the new goal pose to a cell index in the graph
         """
         self.to_update_graph = True
-        # TODO convert pose to cell index
+        self.goal = msg.pose
 
 
 
@@ -75,13 +90,20 @@ class PathPlan(object):
         """
         Creates a LineTrajectory object and publishes it to the /trajectory/current topic.
         """
-        # TODO form a new trajectory from the parent values
+        # form PoseArray from parent values
+        self.trajectory = LineTrajectory("/planned_trajectory")
+        p = goal
+        while p != start:
+            # TODO (for Varied Resolution) convert p to a PoseStamped in map
+            self.trajectory.addPoint(p)
+            p = parent[p]
 
         # publish trajectory
         self.traj_pub.publish(self.trajectory.toPoseArray())
 
         # visualize trajectory Markers
         self.trajectory.publish_viz()
+
 
     def find_shortest_path(self, graph, start, goal):
         """
@@ -93,7 +115,7 @@ class PathPlan(object):
         #queue for holding nodes to look at, seen for seen nodes
         queue = {start,}
         seen = {start,}
-        parents = {start: None}}
+        parents = {start: None}
         dists = {start: self.dist_between_points(start, goal) }     
         
         height  = graph.info.height
@@ -108,7 +130,7 @@ class PathPlan(object):
             i,j = queue.pop()
 
             #base end, compute path back to start and return
-            if (i,j) = goal:
+            if (i,j) == goal:
                 path = []
                 p = parents[(i,j)]
                 while p:
@@ -141,7 +163,7 @@ class PathPlan(object):
         for i in OG.info.height:
             for j in OG.info.width:
                 if OG.data[i][j] > 30:
-                    dark.add((i,j)
+                    dark.add((i,j))
 
 
         wall_thickness = 0.5
