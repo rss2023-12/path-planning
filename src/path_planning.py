@@ -2,6 +2,7 @@
 
 import rospy
 import numpy as np
+import scipy.signal
 import math
 from geometry_msgs.msg import PoseStamped, PoseArray
 from nav_msgs.msg import Odometry, OccupancyGrid
@@ -65,10 +66,11 @@ class PathPlan(object):
         """
         Callback for map. Updates the new map
         """
+        rospy.loginfo(msg)
+        rospy.loginfo((msg.info.width, msg.info.height))
         self.to_update_graph = True
-        print('staring map thicken')
-        self.map, dim = self.map_thicken(msg)
-        rospy.loginfo(len(self.map))
+        self.graph = self.build_graph(msg)
+        rospy.loginfo(self.graph.shape)
 
 
     def odom_cb(self, msg):
@@ -157,6 +159,21 @@ class PathPlan(object):
 
     def dist_between_points(self, A, B):
         return ((1.0*A[0]-B[0])**2 + (1.0*A[1]-B[1])**2)**0.5
+    
+
+
+    def build_graph(self, map):
+        og_graph = np.array(map.data).reshape(map.info.width, map.info.height)
+
+        # params
+        filt = np.ones((2, 2))
+        stride = 2
+
+        # convolve
+        stride_conv = lambda arr, arr2, s: scipy.signal.convolve2d(arr, arr2[::-1, ::-1], mode='valid')[::s, ::s]
+        new_graph = stride_conv(og_graph, filt, stride)
+
+        return new_graph
 
   
 
