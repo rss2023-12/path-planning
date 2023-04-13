@@ -33,7 +33,7 @@ class PathPlan(object):
         self.to_update_graph = False
         self.lowres_map = None # downsampled version of map as an OccupancyGrid
         self.trajectory = LineTrajectory("/planned_trajectory")
-        self.graph = None
+        self.graph = None # as a set of vacant cells in lowres_map
         self.goal = None # as a PoseStamped in map
         self.start = None # as a PoseStamped in map
         
@@ -45,7 +45,7 @@ class PathPlan(object):
             self.to_update_graph = False
 
             # create graph from map, start, and goal
-            self.graph = self.lowres_map # TODO (for Varied Resolution) update resolution, height, width
+            self.graph = self.build_graph(self.lowres_map)
 
             # TODO (for Varied Resolution) convert start and goal to cell indices in graph of different resolution
             start = (self.start.position.x, self.start.position.y)
@@ -65,7 +65,7 @@ class PathPlan(object):
         rospy.loginfo((msg.info.width, msg.info.height))
         self.to_update_graph = True
         self.lowres_map = self.make_lowres_map(msg)
-        rospy.loginfo(self.graph.shape)
+        rospy.loginfo((self.lowres_map.info.width, self.lowres_map.info.height))
 
 
     def odom_cb(self, msg):
@@ -158,10 +158,13 @@ class PathPlan(object):
 
 
     def make_lowres_map(self, map):
+        """
+        Downsamples the map by a factor "stride".
+        """
         og_map_data = np.array(map.data).reshape(map.info.width, map.info.height)
 
         # params
-        filt = np.ones((2, 2))
+        filt = np.ones((7, 7)) # 0.05m x 3 = 15 cm buffer on each side
         stride = 2
 
         # convolve
@@ -176,7 +179,18 @@ class PathPlan(object):
         new_map.info.resolution = map.info.resolution * stride
 
         return new_map
+    
 
+    def build_graph(self, map):
+        """
+        Builds a graph of vacant cells from the map data.
+        """
+        graph = set()
+        for i in range(map.info.height):
+            for j in range(map.info.width):
+                if map.data[i*map.info.width + j] == 0:
+                    graph.add((i,j))
+        return graph
   
 
     def map_thicken(self,OG):
