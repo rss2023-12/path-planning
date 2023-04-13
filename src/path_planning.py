@@ -56,9 +56,9 @@ class PathPlan(object):
             goal = (self.goal.position.x, self.goal.position.y)
 
             # plan path
-            parent = self.find_shortest_path(self.graph, start, goal)
+            #parent = self.find_shortest_path(self.graph, start, goal)
             # TODO (for Shortest Path Chain Reduction) collapse parent chain
-            self.plan_path(self.graph, start, goal, parent)
+            #self.plan_path(self.graph, start, goal, parent)
 
 
     def map_cb(self, msg):
@@ -66,7 +66,9 @@ class PathPlan(object):
         Callback for map. Updates the new map
         """
         self.to_update_graph = True
-        self.map = self.map_thicken(msg)
+        print('staring map thicken')
+        self.map, dim = self.map_thicken(msg)
+        rospy.loginfo(len(self.map))
 
 
     def odom_cb(self, msg):
@@ -113,10 +115,9 @@ class PathPlan(object):
         # TODO: UPDATE PARENT POINTERS
 
         #queue for holding nodes to look at, seen for seen nodes
-        queue = {start,}
+        queue = { (start, self. dist_between_points(start, goal)), }
         seen = {start,}
-        parents = {start: None}
-        dists = {start: self.dist_between_points(start, goal) }     
+        parents = {start: None}  
         
         height  = graph.info.height
         width  = graph.info.width
@@ -127,7 +128,8 @@ class PathPlan(object):
         while queue:
 
             #pop off the queue, get node values i and j
-            i,j = queue.pop()
+            node, _ = queue.pop()
+            i,j = node
 
             #base end, compute path back to start and return
             if (i,j) == goal:
@@ -145,8 +147,7 @@ class PathPlan(object):
                 if height > _x  >=0 and width > _y >= 0 and (_x,_y) not in seen:
                     seen.add( (_x,_y) )
                     if graph.data[_x][_y] < 30:
-                       queue.add((_x, _y))
-                       dists[(_x,_y)] = self.dist_between_points((_x,_y), goal)
+                       queue.add( ((_x, _y), self.dist_between_points((_x,_y), goal)) )
                        parents[(_x, _y)] = (x,y)
 
             seen.add(node)
@@ -157,26 +158,74 @@ class PathPlan(object):
     def dist_between_points(self, A, B):
         return ((1.0*A[0]-B[0])**2 + (1.0*A[1]-B[1])**2)**0.5
 
+  
 
     def map_thicken(self,OG):
-        dark = {}
-        for i in OG.info.height:
-            for j in OG.info.width:
-                if OG.data[i][j] > 30:
-                    dark.add((i,j))
+        '''
+        Creates a graph out of map data. First adds a thickening, finds all open space, then downsamples into dict graph representation"
 
+
+        '''
+
+        neighbors = [(0,1), (0,-1), (1,0), (-1,0), (1,1), (-1, -1), (1, -1), (-1, 1)]
+        height  = OG.info.height
+        width  = OG.info.width
+
+        graph = {}
+
+
+        borders = set()
+        for i in range(height):
+            for j in range(width):
+                if OG.data[i*width + j] == 0:
+                    for x,y in neighbors:
+                        _x, _y = i+x, j+y
+                        if height > _x  >=0 and width > _y >= 0 and OG.data[_x*width + _y] != 0:
+                            borders.add( (i,j) )
+                            break
 
         wall_thickness = 0.5
-        pix_thickness = math.ciel(1/OG.info.resolution*wall_thickness)
+        pix_thickness = int(1/OG.info.resolution*wall_thickness)
         coords = []
         for x in range(pix_thickness):
             coords += [(x,pix_thickness-x),(-x,pix_thickness-x),(-x,-(pix_thickness-x)),(x,-(pix_thickness-x))]
             
-        for i,j in dark:
+        print('borders found')
+
+        bad = set()
+        #add thicken circles
+        for i,j in borders:
             for x,y in coords:
-                if OG.info.height > i+x >= 0 and OG.info.width > j+y >= 0:
-                    OG.data[i+x][j+y] = 100
-        return OG
+                _x, _y = i+x, j+y
+                bad.add( (_x, _y) )
+
+        print('new borders made')
+
+        #downsample graph by val
+        meters_per_pixel_ideal = 0.2
+        down_sample = int(np.rint(meters_per_pixel_ideal/OG.info.resolution))
+        x = 0
+        y = 0
+        while x < height:
+            while y < width:
+                valid_node  = True
+                for i in range(x, x+down_sample):
+                    for j in range(y, y+down_sample):
+                        if (i,j) in bad or (height > i  >=0 and width > j >= 0 and OG.data[i*width + j] != 0):
+                            valid_node  = False
+                            break
+                    if not valid_node:
+                        break
+                if valid_node:
+                    _x = (1.0*down_sample*(2*x+1) - 1)/2 
+                    _y = (1.0*down_sample*(2*y+1) - 1)/2
+                    graph[(_x, _y)] = None
+                            
+                y += down_sample
+            y = 0
+            x  += down_sample
+
+        return graph, (height, width)
             
 if __name__=="__main__":
     rospy.init_node("path_planning")
