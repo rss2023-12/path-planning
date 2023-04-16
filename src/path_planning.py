@@ -71,20 +71,20 @@ class PathPlan(object):
         """
         Callback for map. Updates the new map
         """
+        if True:
+            self.map = msg
+            print(msg.info)
+            #self.lowres_map = self.make_lowres_map(msg)
+            self.graph = self.map_thicken(msg)
+            #self.build_graph(self.lowres_map)
+            print('new map made')
+            #print(self.lowres_map.info)
+            print(len(self.graph))
+        return
         self.map = msg
         print(msg.info)
-        #self.lowres_map = self.make_lowres_map(msg)
-        self.graph = self.map_thicken(msg)
-        #self.build_graph(self.lowres_map)
-        print('new map made')
-        #print(self.lowres_map.info)
-        print(len(self.graph))
-        
-        return
-
-        print(msg.info)
         self.lowres_map = self.make_lowres_map(msg)
-        self.build_graph(self.lowres_map)
+        self.graph = self.build_graph(self.lowres_map)
         print('new map made')
         print(self.lowres_map.info)
         print(len(self.graph))
@@ -252,12 +252,12 @@ class PathPlan(object):
         og_map_data = np.array(_map.data).reshape(_map.info.width, _map.info.height)
 
         # params
-        filt = np.ones((2,2)) # 0.05m x 3 = 15 cm buffer on each side
+        filt = np.ones((5,5)) # 0.05m x 3 = 15 cm buffer on each side
         stride = 1
         self.stride = stride
 
         # convolve
-        stride_conv = lambda arr, arr2, s: scipy.signal.convolve2d(arr, arr2[::-1, ::-1], mode='valid')[::s, ::s]
+        stride_conv = lambda arr, arr2, s: scipy.signal.convolve2d(arr, arr2, mode='same', boundary='fill')[::s, ::s]
         new_map_data = stride_conv(og_map_data, filt, stride)
 
         new_map = OccupancyGrid()
