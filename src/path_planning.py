@@ -73,11 +73,22 @@ class PathPlan(object):
         """
         self.map = msg
         print(msg.info)
+        #self.lowres_map = self.make_lowres_map(msg)
+        self.graph = self.map_thicken(msg)
+        #self.build_graph(self.lowres_map)
+        print('new map made')
+        #print(self.lowres_map.info)
+        print(len(self.graph))
+        
+        return
+
+        print(msg.info)
         self.lowres_map = self.make_lowres_map(msg)
-        self.graph = self.build_graph(self.lowres_map)
+        self.build_graph(self.lowres_map)
         print('new map made')
         print(self.lowres_map.info)
         print(len(self.graph))
+
     def odom_cb(self, msg):
         """
         Callback for odometry. Updates the current pose to a cell index in the graph
@@ -293,11 +304,15 @@ class PathPlan(object):
                             borders.add( (i,j) )
                             break
 
-        wall_thickness = 0.5
+        wall_thickness = 1
         pix_thickness = int(1/OG.info.resolution*wall_thickness)
         coords = []
-        for x in range(pix_thickness):
-            coords += [(x,pix_thickness-x),(-x,pix_thickness-x),(-x,-(pix_thickness-x)),(x,-(pix_thickness-x))]
+        #for x in range(pix_thickness):
+        #   coords += [(x,pix_thickness-x),(-x,pix_thickness-x),(-x,-(pix_thickness-x)),(x,-(pix_thickness-x))]
+            
+        for i in range(pix_thickness):
+            for x in range(i):
+                coords += [(x,i-x),(-x,i-x),(-x,-(i-x)),(x,-(i-x))]
             
         print('borders found')
 
@@ -316,6 +331,13 @@ class PathPlan(object):
         self.stride = down_sample
         x = 0
         y = 0
+
+        #for i in range(height):
+        #    for j in range(width):
+        #        if (i,j) not in bad and OG.data[i*width+j] == 0:
+        #            graph.add( (i,j) )
+        #return graph
+
         while x < height:
             while y < width:
                 valid_node  = True
