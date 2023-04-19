@@ -31,12 +31,13 @@ class PurePursuit(object):
         self.trajectory.fromPoseArray(msg)
         self.trajectory.publish_viz(duration=0.0)
         drive_cmd = AckermannDriveStamped()
+        np.linalg.norm(self.trajectory.points, axis=1)
         L_1 = self.lookahead
         L = self.wheelbase_length
         rospy.logerr(self.trajectory.distances)
         rospy.logerr(self.trajectory.points)
-        eta = 1 #needs to be set
-        drive_cmd.drive.steering_angle = -np.tan(2*L*np.sin(eta)/(L_1))
+        eta = self
+        drive_cmd.drive.steering_angle = -np.tan(2*L*np.sin(eta)/(L_1));
         drive_cmd.drive.steering_angle_velocity = 1 #Needs to be set
         drive_cmd.drive.speed = self.speed
         
