@@ -71,14 +71,41 @@ class PurePursuit(object):
         # Define line to intersect and find point of intersection with car
         # radius.
         #####################################################################
-        
+        x_offset, y_offset = -x_car, -y_car   # for easier math
+        p1_x, p2_x, p1_y, p2_y = first_point[0] + x_offset, second_point[0] + x_offset, first_point[1] + y_offset, second_point[1] + y_offset
 
+        a = L_1
+        m = (p2_y - p1_y)/(p2_x-p1_x)
+        c = p1_y - m*p1_x
+        D = (2*m*c)**2-4*(1+m**2)*(c**2-a**2)
+        res1 = -((2*m*c)**2 + np.sqrt(D))/(2*(1 + m**2))
+        res2 = -((2*m*c)**2 - np.sqrt(D))/(2*(1 + m**2))
+        x1_int, x2_int = res1 - x_offset, res2 - x_offset   # actual x coordinates of intersections
+        y1_int, y2_int = m*x1_int + c - y_offset, m*x2_int + c - y_offset
         
-        px, py = point
+        #####################################################################
+        # choose a point to follow (the one most closely aligned) and 
+        # calculate required eta value to get there
+        #####################################################################
+        
+        # check intersection point 1 to see if it is ahead
+        int1_angle = np.atan2((y1_int - car_y), (x1_int - car_x))
+        int1_dir = np.array([np.cos(int1_angle), np.sin(int1_angle)])
+        ahead = np.dot(car_dir, int1_dir) > 0
+        pursue_point = np.array([x1_int, y1_int]) if ahead else np.array([x2_int, y2_int])
+
+        v_ref = np.array([1, 0])    # reference vector which is horizontal in the world frame
+        pursue_angle = np.atan2((pursue_point[1] - car_y), (pursue_point[2] - car_x))
+        pursue_dir = np.array([np.cos(pursue_angle), np.sin(pursue_angle)])
+        eta = np.acos(np.dot(v_ref, pursue_dir)/(a))        # a is L_1 which is the lookahead radius
+        
+        #####################################################################
+        # compose drive command
+        #####################################################################
+
         drive_cmd = AckermannDriveStamped()
         #rospy.logerr(self.trajectory.distances)
         #rospy.logerr(self.trajectory.points)
-        eta = 
 
         drive_cmd.drive.steering_angle = np.atan2(2*L*np.sin(eta), L_1)
         drive_cmd.drive.steering_angle_velocity = 0
