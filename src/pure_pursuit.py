@@ -32,7 +32,7 @@ class PurePursuit(object):
     def initialize_callback(self,msg):
         
         angle = tf.transformations.euler_from_quaternion(msg.poses.orientation)
-        self.current_pose = (msg.poses.position.x msg.poses.position.y angle)
+        self.current_pose = (msg.poses.position.x, msg.poses.position.y, angle)
     def update_pose_callback(self, msg):
         '''
         literally just update the car's pose
