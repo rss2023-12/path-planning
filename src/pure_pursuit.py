@@ -29,10 +29,11 @@ class PurePursuit(object):
         self.drive_pub = rospy.Publisher("/drive", AckermannDriveStamped, queue_size=1)
 
 
-    def initialize_callback(self,msg):
+    def init_callback(self,msg):
         
         angle = tf.transformations.euler_from_quaternion(msg.pose.pose.orientation)
         self.current_pose = (msg.pose.pose.position.x, msg.pose.pose.position.y, angle)
+        
     def update_pose_callback(self, msg):
         '''
         literally just update the car's pose
@@ -46,6 +47,8 @@ class PurePursuit(object):
     def trajectory_callback(self, msg):
         ''' Clears the currently followed trajectory, and loads the new one from the message
         '''
+        if self.current_pose is None:
+            return
         print("Receiving new trajectory:", len(msg.poses), "points")
         self.trajectory.clear()
         self.trajectory.fromPoseArray(msg)
