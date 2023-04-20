@@ -6,7 +6,7 @@ import time
 import utils
 import tf
 
-from geometry_msgs.msg import PoseArray, PoseStamped
+from geometry_msgs.msg import PoseArray, PoseStamped, PoseWithCovarianceStamped
 from visualization_msgs.msg import Marker
 from ackermann_msgs.msg import AckermannDriveStamped
 from nav_msgs.msg import Odometry
@@ -17,7 +17,7 @@ class PurePursuit(object):
     
     def __init__(self):
         self.current_pose = None
-        self.init_sub = rospy.Subscriber('/initialpose', PosewithCovarianceStamped, self.init_callback, queue_size=1)
+        self.init_sub = rospy.Subscriber('/initialpose', PoseWithCovarianceStamped, self.init_callback, queue_size=1)
         
         self.odom_topic       = rospy.get_param("~odom_topic", "/odom")
         self.lookahead        = 0.5
@@ -31,8 +31,8 @@ class PurePursuit(object):
 
     def initialize_callback(self,msg):
         
-        angle = tf.transformations.euler_from_quaternion(msg.poses.orientation)
-        self.current_pose = (msg.poses.position.x, msg.poses.position.y, angle)
+        angle = tf.transformations.euler_from_quaternion(msg.pose.pose.orientation)
+        self.current_pose = (msg.pose.pose.position.x, msg.pose.pose.position.y, angle)
     def update_pose_callback(self, msg):
         '''
         literally just update the car's pose
