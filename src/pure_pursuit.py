@@ -6,10 +6,12 @@ import time
 import utils
 import tf
 
+
 from geometry_msgs.msg import PoseArray, PoseStamped, PoseWithCovarianceStamped
 from visualization_msgs.msg import Marker
 from ackermann_msgs.msg import AckermannDriveStamped
 from nav_msgs.msg import Odometry
+from std_msgs.msg import Float32
 
 class PurePursuit(object):
     """ Implements Pure Pursuit trajectory tracking with a fixed lookahead and speed.
@@ -17,33 +19,40 @@ class PurePursuit(object):
     
     def __init__(self):
         self.current_pose = None
-        self.init_sub = rospy.Subscriber('/initialpose', PoseWithCovarianceStamped, self.init_callback, queue_size=1)
-        
+        self.init = False
         self.odom_topic       = rospy.get_param("~odom_topic", "/odom")
-        self.lookahead        = 0.5
+        self.lookahead        = 1.2
         self.speed            = 10
         self.wheelbase_length = 0.325
+        
         self.trajectory  = utils.LineTrajectory("/followed_trajectory")
-        self.pose_sub = rospy.Subscriber(self.odom_topic, PoseArray, self.update_pose_callback, queue_size=1)
+        
         self.traj_sub = rospy.Subscriber("/trajectory/current", PoseArray, self.trajectory_callback, queue_size=1)
+        self.pose_sub = rospy.Subscriber(self.odom_topic, Odometry, self.update_pose_callback, queue_size=1)
+        
         self.drive_pub = rospy.Publisher("/drive", AckermannDriveStamped, queue_size=1)
-
+        self.error_pub = rospy.Publisher("/drive_err",Float32, queue_size = 1)
 
     def init_callback(self,msg):
         
-        angle = tf.transformations.euler_from_quaternion(msg.pose.pose.orientation)
+        angle = tf.transformations.euler_from_quaternion([msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w])[2]
+
         self.current_pose = (msg.pose.pose.position.x, msg.pose.pose.position.y, angle)
         
     def update_pose_callback(self, msg):
         '''
         literally just update the car's pose
         '''
-        if self.current_pose is None:
-            return
-        angle = tf.transformations.euler_from_quaternion(msg.poses.orientation)
-        self.current_pose = (msg.poses.position.x, msg.poses.position.y, angle)
+        angle = tf.transformations.euler_from_quaternion([msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w])[2]
+        self.current_pose = np.array([msg.pose.pose.position.x, msg.pose.pose.position.y, angle])
         rospy.logerr(msg)
 
+    def distance_finder(self,p1,p2):
+        
+        x_car, y_car, theta_car = self.current_pose
+        
+        
+        
     def trajectory_callback(self, msg):
         ''' Clears the currently followed trajectory, and loads the new one from the message
         '''
