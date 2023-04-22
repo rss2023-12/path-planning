@@ -21,8 +21,8 @@ class PurePursuit(object):
     def __init__(self):
         self.init = False
         self.odom_topic       = rospy.get_param("~odom_topic", "/pf/pose/odom")
-        self.lookahead        = 1.2
-        self.speed            = 2
+        self.lookahead        = 1.5 # 0.4
+        self.speed            = 1.75
         self.wheelbase_length = 0.325
         
         self.trajectory  = utils.LineTrajectory("/followed_trajectory")
@@ -31,7 +31,7 @@ class PurePursuit(object):
         self.pose_sub = rospy.Subscriber(self.odom_topic, Odometry, self.update_pose_callback, queue_size=1)
         
         self.drive_pub = rospy.Publisher("/drive", AckermannDriveStamped, queue_size=1)
-        self.error_pub = rospy.Publisher("/drive_error",Float32, queue_size = 1)
+        #self.error_pub = rospy.Publisher("/drive_error",Float32, queue_size = 1)
 
     def update_pose_callback(self, msg):
         '''
@@ -39,7 +39,7 @@ class PurePursuit(object):
         '''
         angle = tf.transformations.euler_from_quaternion([msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w])[2]
         self.current_pose = np.array([msg.pose.pose.position.x, msg.pose.pose.position.y, angle])
-        #rospy.logerr(msg)
+        rospy.logerr(self.current_pose)
         L = self.wheelbase_length
         
         drive_cmd = AckermannDriveStamped()
@@ -50,7 +50,7 @@ class PurePursuit(object):
         #Get trajectory
         t_points = self.trajectory.points
         
-        # Get Distances
+        # Get Distances       
         x_car, y_car, theta_car = self.current_pose
         x_car = float(x_car)
         y_car = float(y_car)
@@ -58,40 +58,11 @@ class PurePursuit(object):
         #####################################################################
         # find last and next points in trajectory to define line to intersect
         #####################################################################
-        t_points = self.trajectory.points
-    
-        distances_from_car = np.array([((point[0]-x_car)**2+ (point[1]-y_car)**2)**0.5 for point in self.trajectory.points])
-            
-        
-        '''
-        drive_cmd = AckermannDriveStamped()
-        np.linalg.norm(self.trajectory.points, axis=1)
-        
-        rospy.logerr(self.trajectory.distances)
-        rospy.logerr(self.trajectory.points)
-        eta = self
-        drive_cmd.drive.steering_angle = -np.tan(2*L*np.sin(eta)/(L_1));
-        drive_cmd.drive.steering_angle_velocity = 1 #Needs to be set
-        drive_cmd.drive.speed = self.speed
-        L_1 = self.lookahead
-        L = self.wheelbase_length
-        
-        '''
-        x_car, y_car, theta_car = self.current_pose
-        rospy.logerr(self.current_pose)
-        x_car = float(x_car)
-        y_car = float(y_car)
-        theta_car = float(theta_car)
-        #####################################################################
-        # find last and next points in trajectory to define line to intersect
-        #####################################################################
-        t_points = self.trajectory.points
-    
         distances_from_car = np.array([((point[0]-x_car)**2+ (point[1]-y_car)**2)**0.5 for point in self.trajectory.points])
         
         min_dist_ind = np.argmin(distances_from_car)
         first_point = t_points[min_dist_ind]
-        
+        '''
         car_dir = np.array([np.cos(theta_car), np.sin(theta_car)])              # vector of car's orientation
         path_angle = np.arctan2((first_point[1]-y_car), (first_point[0]-x_car))
         path_dir = np.array([np.cos(path_angle), np.sin(path_angle)])           # vector from car to closest point
@@ -102,23 +73,28 @@ class PurePursuit(object):
             self.drive_pub.publish(drive_cmd)
             rospy.logerr("stopping end")
             return
-        
+        '''
+        second_point_ind = min_dist_ind +  1
         second_point = t_points[second_point_ind]
         
         min_dist = self.shortest_distance_getter(first_point, second_point)
         #self.error_pub.publish(min_dist)
         
         intersect_val = None
+        
+        intersect = self.circ_intersector(first_point,second_point)
+        '''
         for i in range(min_dist_ind, len(t_points)-1):
             intersect = self.circ_intersector(t_points[i], t_points[i+1])
-            if not (intersect is None): 
-                intersect_val = intersect
+        '''
+        if not (intersect is None): 
+            intersect_val = intersect
         
         
         if intersect_val is None: 
-            drive_cmd.drive.speed = 0
-            self.drive_pub.publish(drive_cmd)
-            rospy.logerr("Slowing down, bad intersect")
+            #drive_cmd.drive.speed = 0
+            #self.drive_pub.publish(drive_cmd)
+            rospy.logerr("Slow down, bad intersect")
             
         else:
             V = np.subtract(intersect_val, np.array([x_car, y_car]))
@@ -192,7 +168,7 @@ class PurePursuit(object):
 
         discriminant = b**2 - 4*a*c
         if discriminant < 0:             
-            rospy.logerr("bad discriminant")
+            #rospy.logerr("bad discriminant")
             return None
 
         t_1 = (-b+math.sqrt(discriminant))/(2*a)
@@ -225,7 +201,7 @@ class PurePursuit(object):
 
             # return soln1 if d1 > d2 else soln2 , returning solution with smallest ngle diff.
             
-            return soln1 if d1 > d2 else soln2 
+            return soln1 if d1 ==max(d1,d2) else soln2 
         
         
         
