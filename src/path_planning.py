@@ -3,6 +3,7 @@
 import rospy
 import numpy as np
 import tf
+from functools import wraps
 import scipy.signal
 from heapdict import heapdict
 import math
@@ -19,6 +20,15 @@ from utils import LineTrajectory
 # Dynamic Subgraph Node Grouping = veried resolution in graph (higher around start, lower otherwise) 
 # (!) Consider Bot Orientation in building the trajectory
 #
+def timeit(func):
+    def timeit_wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        total_time = end_time - start_time
+        print('\nFunction ' +  func.__name__ + " Took " + str(total_time) + ' seconds')
+        return result
+    return timeit_wrapper
 
 class PathPlan(object):
     """ Listens for goal pose published by RViz and uses it to plan a path from
@@ -37,7 +47,6 @@ class PathPlan(object):
         self.map = None
         self.lowres_map = None # downsampled version of map as an OccupancyGrid
         self.stride = 1 #default of stride
-        self.trajectory = LineTrajectory("/planned_trajectory")
         self.graph = None # as a set of vacant cells in lowres_map
         self.goal = None # as a PoseStamped in map
         self.start = None # as a PoseStamped in map
@@ -58,20 +67,27 @@ class PathPlan(object):
             start = self.find_closest_node(start)[::-1]
             goal = self.find_closest_node(goal)[::-1]
             
-            # plan path
-            parent_path = self.find_shortest_path(self.graph, start, goal)
+            # plan path with greedy search
+            parent_path = self.greedy_search(self.graph, start, goal)
+            self.plan_path(parent_path, '/greedy_trajectory')
 
-            print(parent_path)
+            #plan path with DFS
+            parent_path = self.DFS(self.graph, start, goal)
+            self.plan_path(parent_path, '/DFS_trajectory')
+
+            # plan path with BFS
+            parent_path = self.BFS(self.graph, start, goal)
+            self.plan_path(parent_path)
+
             # TODO (for Shortest Path Chain Reduction) collapse parent chain
-            if parent_path:
-                self.plan_path(parent_path)
+                
 
-
+    @timeit
     def map_cb(self, msg):
         """
         Callback for map. Updates the new map
         """
-        if True:
+        if False:
             self.map = msg
             print(msg.info)
             #self.lowres_map = self.make_lowres_map(msg)
@@ -80,10 +96,12 @@ class PathPlan(object):
             print('new map made')
             #print(self.lowres_map.info)
             print(len(self.graph))
-        return
+            return
         self.map = msg
         print(msg.info)
         self.lowres_map = self.make_lowres_map(msg)
+        #with open('map_info.npy', 'wb') as f:
+        #   np.save(f, np.array(msg.data))
         self.graph = self.build_graph(self.lowres_map)
         print('new map made')
         print(self.lowres_map.info)
@@ -103,12 +121,12 @@ class PathPlan(object):
         self.goal = msg.pose
         print('goal found')
 
-    def plan_path(self, parent_path):
+    def plan_path(self, parent_path, viz_name = "/planned_trajectory"):
         """
         Creates a LineTrajectory object and publishes it to the /trajectory/current topic.
         """
         # form PoseArray from parent values
-        self.trajectory = LineTrajectory("/planned_trajectory")
+        self.trajectory = LineTrajectory(viz_name)
         for (i,j) in parent_path:
             u = (1.0*self.stride*(2*i+1)-1)/2
             v = (1.0*self.stride*(2*j+1)-1)/2
@@ -188,8 +206,87 @@ class PathPlan(object):
 
         return (_u, _v)
 
+    @timeit
+    def BFS(self, graph, start, goal):
 
-    def find_shortest_path(self, graph, start, goal):
+        q = [start]
+        seen = {start,}
+        parents = {start: None} 
+        closest = (start, self.dist_between_points(start, goal))
+
+
+        neighbors = [(0,1), (0,-1), (1,0), (-1,0), (1,1), (-1, -1), (1, -1), (-1, 1)]
+
+        while q:
+            node = q.pop(0)
+            seen.add(node)
+            _ = self.dist_between_points(node, goal)
+            if _ < closest[1]:
+                closest = (node, _)
+            i,j = node
+
+            if node == goal:
+                break
+
+            #for each neighbor, check if not seen, then add to seen. If reachable, add to the queue
+            for x,y in neighbors:
+                _x, _y = i+x, j+y
+                if (_x,_y) not in seen:
+                    seen.add( (_x,_y) )
+                    if (_x,_y) in graph:
+                        q.append( (_x, _y) )
+                        parents[(_x, _y)] = (i,j)
+        
+        #base end, compute path back to start and return
+        path = [closest[0]]
+        p = parents[closest[0]]
+        while p:
+            path.append(p)
+            p = parents[p]
+        return path[::-1]
+    
+    @timeit
+    def DFS(self, graph, start, goal):
+
+        q = [start]
+        seen = {start,}
+        parents = {start: None} 
+        closest = (start, self.dist_between_points(start, goal))
+
+
+        neighbors = [(0,1), (0,-1), (1,0), (-1,0), (1,1), (-1, -1), (1, -1), (-1, 1)]
+
+        while q:
+            node = q.pop(-1)
+            seen.add(node)
+            _ = self.dist_between_points(node, goal)
+            if _ < closest[1]:
+                closest = (node, _)
+            i,j = node
+
+            if node == goal:
+                break
+
+            #for each neighbor, check if not seen, then add to seen. If reachable, add to the queue
+            for x,y in neighbors:
+                _x, _y = i+x, j+y
+                if (_x,_y) not in seen:
+                    seen.add( (_x,_y) )
+                    if (_x,_y) in graph:
+                        q.append( (_x, _y) )
+                        parents[(_x, _y)] = (i,j)
+        
+        #base end, compute path back to start and return
+        path = [closest[0]]
+        p = parents[closest[0]]
+        while p:
+            path.append(p)
+            p = parents[p]
+        return path[::-1]
+
+
+    @timeit
+    def greedy_search(self, graph, start, goal):
         """
         Finds the shortest path from start to goal in the graph.
         Returns a set of parent values for each node in the graph.
@@ -240,20 +337,22 @@ class PathPlan(object):
             p = parents[p]
         return path[::-1]
 
+
     def dist_between_points(self, A, B):
         return ((1.0*A[0]-B[0])**2 + (1.0*A[1]-B[1])**2)**0.5
     
-
 
     def make_lowres_map(self, _map):
         """
         Downsamples the map by a factor "stride".
         """
-        og_map_data = np.array(_map.data).reshape(_map.info.width, _map.info.height)
+        og_map_data = np.array(_map.data).reshape(_map.info.height, _map.info.width)
 
         # params
-        filt = np.ones((5,5)) # 0.05m x 3 = 15 cm buffer on each side
-        stride = 1
+        filt = np.ones((15,15)) # 0.05m x 3 = 15 cm buffer on each side
+
+        
+        stride = 3
         self.stride = stride
 
         # convolve
@@ -263,8 +362,8 @@ class PathPlan(object):
         new_map = OccupancyGrid()
         new_map.data = new_map_data.flatten()
         new_map.info = MapMetaData()
-        new_map.info.width = new_map_data.shape[0]
-        new_map.info.height = new_map_data.shape[1]
+        new_map.info.height = new_map_data.shape[0]
+        new_map.info.width = new_map_data.shape[1]
         new_map.info.resolution = _map.info.resolution * stride
 
         return new_map
@@ -281,69 +380,49 @@ class PathPlan(object):
                     graph.add((i,j))
         return graph
   
-
+    @timeit
     def map_thicken(self,OG):
         '''
         Creates a graph out of map data. First adds a thickening, finds all open space, then downsamples into dict graph representation"
         '''
-
-        neighbors = [(0,1), (0,-1), (1,0), (-1,0), (1,1), (-1, -1), (1, -1), (-1, 1)]
         height  = OG.info.height
         width  = OG.info.width
 
         graph = set()
 
+        og_map_data = np.array(OG.data).reshape(height, width)
 
-        borders = set()
+        # params
+        filt = np.ones((1,1)) # 0.05m x 3 = 15 cm buffer on each side
+
+        # convolve
+        stride_conv = lambda arr, arr2: scipy.signal.convolve2d(arr, arr2, mode='same', boundary='fill')
+        new_map_data = stride_conv(og_map_data, filt)
+
+        open_nodes = set()
         for i in range(height):
             for j in range(width):
-                if OG.data[i*width + j] == 0:
-                    for x,y in neighbors:
-                        _x, _y = i+x, j+y
-                        if height > _x  >=0 and width > _y >= 0 and OG.data[_x*width + _y] != 0:
-                            borders.add( (i,j) )
-                            break
+                #if OG.data[i*width+j] == 0:
+                if new_map_data[i][j] == 0:
+                    open_nodes.add( (i,j) )
+                if new_map_data[i][j] == 0 != OG.data[i*width+j]:
+                    print('h', (i,j))
 
-        wall_thickness = 1
-        pix_thickness = int(1/OG.info.resolution*wall_thickness)
-        coords = []
-        #for x in range(pix_thickness):
-        #   coords += [(x,pix_thickness-x),(-x,pix_thickness-x),(-x,-(pix_thickness-x)),(x,-(pix_thickness-x))]
-            
-        for i in range(pix_thickness):
-            for x in range(i):
-                coords += [(x,i-x),(-x,i-x),(-x,-(i-x)),(x,-(i-x))]
-            
-        print('borders found')
-
-        bad = set()
-        #add thicken circles
-        for i,j in borders:
-            for x,y in coords:
-                _x, _y = i+x, j+y
-                bad.add( (_x, _y) )
-
-        print('new borders made')
+        print('Good nodes found')
 
         #downsample graph by val
         meters_per_pixel_ideal = 0.2
-        down_sample = int(np.rint(meters_per_pixel_ideal/OG.info.resolution))
+        down_sample = 2#int(np.rint(meters_per_pixel_ideal/OG.info.resolution))
         self.stride = down_sample
         x = 0
         y = 0
-
-        #for i in range(height):
-        #    for j in range(width):
-        #        if (i,j) not in bad and OG.data[i*width+j] == 0:
-        #            graph.add( (i,j) )
-        #return graph
 
         while x < height:
             while y < width:
                 valid_node  = True
                 for i in range(x, x+down_sample):
                     for j in range(y, y+down_sample):
-                        if (i,j) in bad or (height > i  >= 0 and width > j >= 0 and OG.data[i*width + j] != 0):
+                        if (i,j) not in open_nodes:
                             valid_node  = False
                             break
                     if not valid_node:

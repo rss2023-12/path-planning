@@ -67,7 +67,7 @@ class LineTrajectory(object):
             return (1.0-t)*self.distances[i] + t*self.distances[i+1]
 
     def addPoint(self, point):
-        print "adding point to trajectory:", point.x, point.y
+        #print "adding point to trajectory:", point.x, point.y
         self.points.append((point.x, point.y))
         self.update_distances()
         self.mark_dirty()
@@ -198,9 +198,19 @@ class LineTrajectory(object):
                 marker.action = marker.ADD
                 marker.scale.x = 0.3
                 marker.color.r = 1.0
-                marker.color.g = 1.0
+                marker.color.g = 0.1
                 marker.color.b = 1.0
                 marker.color.a = 1.0
+                if 'greed' in self.viz_namespace:
+                    marker.color.r = 0.2
+                    marker.color.g = 0.2
+                    marker.color.b = 0.5
+                    marker.color.a = 1.0
+                if 'DFS' in self.viz_namespace:
+                    marker.color.r = 0.8
+                    marker.color.g = 0.2
+                    marker.color.b = 0.2
+                    marker.color.a = 0.7
                 for p in self.points:
                     pt = Point32()
                     pt.x = p[0]
