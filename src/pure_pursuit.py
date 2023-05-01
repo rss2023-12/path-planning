@@ -21,8 +21,8 @@ class PurePursuit(object):
     def __init__(self):
         self.init = False
         self.odom_topic       = rospy.get_param("~odom_topic", "/pf/pose/odom")
-        self.lookahead        = 1.5 # 0.4
-        self.speed            = 1.75
+        self.lookahead        = rospy.get_param("/lookahead",1.5) # 0.4
+        self.speed            =1.25
         self.wheelbase_length = 0.325
         
         self.trajectory  = utils.LineTrajectory("/followed_trajectory")
@@ -39,7 +39,7 @@ class PurePursuit(object):
         '''
         angle = tf.transformations.euler_from_quaternion([msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w])[2]
         self.current_pose = np.array([msg.pose.pose.position.x, msg.pose.pose.position.y, angle])
-        rospy.logerr(self.current_pose)
+        #rospy.logerr(self.current_pose)
         L = self.wheelbase_length
         
         drive_cmd = AckermannDriveStamped()
@@ -79,7 +79,7 @@ class PurePursuit(object):
         
         min_dist = self.shortest_distance_getter(first_point, second_point)
         #self.error_pub.publish(min_dist)
-        
+        rospy.logerr(min_dist)
         intersect_val = None
         
         intersect = self.circ_intersector(first_point,second_point)
@@ -102,7 +102,7 @@ class PurePursuit(object):
     
             angle = np.arctan2(V[1], V[0]) - self.current_pose[2] #angle wrt int
     
-            distance = math.sqrt(V[0]**2 + V[1]**2) #distance wrt int
+            distance = math.sqrt(V[0]**2 + V[1]**2) #distance wrt intersect
     
             delta = math.atan(2*L*np.sin(angle)/distance) #pure pursuit
     
